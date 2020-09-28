@@ -2,17 +2,21 @@ import requests
 import pandas as pd
 import pyCelsius as celsius
 from datetime import datetime
+
 pd.set_option('display.width', 500)
 pd.set_option('display.max_columns', 15)
 
 cel_credentials = r'/Users/oscartse/Desktop/my projects ;D/crypto_transactions/credentials.json'
 
 
-def get_coin_list(desired_coin: str)-> list:
-    pass
+def get_coin_list(desired_coin: list) -> pd.DataFrame:
+    url = r'https://api.coingecko.com/api/v3/coins/list'
+    df = pd.DataFrame(requests.get(url).json())
+
+    return df.query(f"symbol in {str(desired_coin)}")
 
 
-def get_ohlc(coin: str, currency: str,  day_range: int) -> pd.DataFrame:
+def get_ohlc(coin: str, currency: str, day_range: int) -> pd.DataFrame:
     url = f'https://api.coingecko.com/api/v3/coins/{coin}/ohlc?vs_currency={currency}&days={day_range}'
     response = requests.get(url)
     df = pd.DataFrame(response, columns=['time', 'open', 'high', 'low', 'close'])
@@ -31,7 +35,7 @@ def get_cel_historical_stat(token_balance: dict) -> pd.DataFrame:
     url = "https://raw.githubusercontent.com/Celsians/Google-Sheets/master/data.json"
     response = requests.request("GET", url)
     df = pd.DataFrame(response.json())
-    df = df[["Date"]+list(token_balance.keys())][1:]
+    df = df[["Date"] + list(token_balance.keys())][1:]
     df['date_obj'] = pd.to_datetime(df['Date'], format='%d.%m.%Y')
     df = df.query('date_obj > "2020-07-01"').drop(columns=['Date']).reset_index(drop=True)
     return df
