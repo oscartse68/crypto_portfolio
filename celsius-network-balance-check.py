@@ -1,12 +1,20 @@
 import requests
 import pandas as pd
+import os
 import pyCelsius as celsius
 from datetime import datetime
 
 pd.set_option('display.width', 500)
 pd.set_option('display.max_columns', 15)
 
-cel_credentials = r'/Users/oscartse/Desktop/my projects ;D/crypto_transactions/credentials.json'
+cel_credentials = [os.path.join(os.getcwd(), x) for x in os.listdir(os.getcwd()) if "credentials" in x][0]
+cel_paths = {
+    "base_url": 'https://wallet-api.celsius.network',
+    "balance_summary": '/wallet/balance',
+    'interestSummary':'/wallet/interest',
+    'statistics':'/util/statistics?timestamp=',
+    'transactionSummary': '/wallet/transactions'
+}
 
 
 def get_coin_list(desired_coin: list) -> pd.DataFrame:
@@ -31,7 +39,7 @@ def read_credentials(cred_path: str) -> dict:
     return cred
 
 
-def get_cel_historical_stat(token_balance: dict) -> pd.DataFrame:
+def get_cel_historical_interest(token_balance: dict) -> pd.DataFrame:
     url = "https://raw.githubusercontent.com/Celsians/Google-Sheets/master/data.json"
     response = requests.request("GET", url)
     df = pd.DataFrame(response.json())
