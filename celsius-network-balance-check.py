@@ -10,38 +10,37 @@ pd.set_option('display.max_columns', 15)
 
 class CelsiusNetworkAPI:
     __base_url = "https://wallet-api.celsius.network"
-    __celsian_stat_url = "https://raw.githubusercontent.com/Celsians/Google-Sheets/master/data.json"
+    __celcian_stat_url = "https://raw.githubusercontent.com/Celsians/Google-Sheets/master/data.json"
 
     def __init__(self, partner_token, user_token):
         self.partner_token = partner_token
         self.user_token = user_token
-        self.coin_list = []
         self.headers = {
             "X-Cel-Api-Key": self.user_token,
             "X-Cel-Partner-Token": self.partner_token
         }
         self.__actions = {
             "balance_summary": {
-                "description": "Check Wallet Balance Summary (USD)",
+                "description": "Check Wallet Balance Summary",
                 "param": "No parameters needed",
                 "url": "/wallet/balance"
             },
-            "balance_summary_coin": {
-                "description": "Check Wallet Balance Summary (in Kind)",
+            "balance_summary_by_kind": {
+                "description": "Check Wallet Balance Summary by coin",
                 "param": "coin short form (e.g. BTC, ETH)",
                 "url": "/wallet/{}/balance"
             },
             "transaction_summary": {
                 "description": "Check Transaction Summary",
                 "param": "page, per_page",
-                "url": "/wallet/transactions"
+                "url": "/wallet/transactions?page={}&per_page={}"
             },
             "transaction_summary_coin": {
-                "description": "Check Transaction Summary",
-                "param": "page, per_page",
+                "description": "Check Transaction Summary by coin",
+                "param": "coin, page",
                 "url": "/wallet/transactions"
             },
-            "interest_summary": {
+            "interest_earned_summary": {
                 "description": "Check Interest Earned",
                 "param": "No parameters needed",
                 "url": "/wallet/interest"
@@ -50,21 +49,31 @@ class CelsiusNetworkAPI:
                 "description": "Check Wallet Status",
                 "url": "/util/statistics?timestamp="
             },
+            "weekly_interest_rate": {
+                "description": "Check This week's Interst Rate",
+                "url": "/util/interest/rates"
+            },
         }
+        self.documentation_url = r'https://wallet-api.staging.celsius.network/api-doc'
+
+    def __get_path(self):
+        response = requests.get(self.documentation_url).json()
+        paths = response['paths'].keys()
+        return paths
 
     def show_wallet_action(self):
         print("Action -> Command")
         for key, val in self.__actions.items():
             print(val['description'], " -> ", key)
 
-    def request(self, command: str, **kwargs):
+    def get(self, command: str, **kwargs):
         if command not in self.__actions.keys():
             return "Error please input valid command"
         else:
             return requests.get(self.__base_url+self.__actions[command]['url'], headers=self.headers).json()
 
-    def get_cel_historical_interest(self, coin_list: list, start_date: str) -> pd.DataFrame:
-        response = requests.request("GET", self.__celsian_stat_url)
+    def get_historical_interest_rate(self, coin_list: list, start_date: str) -> pd.DataFrame:
+        response = requests.request("GET", self.__celcian_stat_url)
         df = pd.DataFrame(response.json())
         df = df[["Date"] + coin_list][1:]
         df['date_obj'] = pd.to_datetime(df['Date'], format='%d.%m.%Y')
@@ -96,7 +105,7 @@ def main():
     cel_credentials = json.load(open(cel_credentials_path))
     cel = CelsiusNetworkAPI(partner_token=cel_credentials['partner_token'], user_token=cel_credentials['user_token'])
     df_balance_summary = pd.DataFrame(
-        cel.request("balance_summary").json()['balance'].items(),
+        cel.get("balance_summary")['balance'].items(),
         columns=['coin', 'balance_in_kind']
     ).astype({"balance_in_kind": "float"}).query("balance_in_kind != 0")
 
