@@ -23,6 +23,8 @@ class CelsiusNetworkAPI:
 
     def __get_actions(self) -> list:
         response = requests.get(self.__openapi_documentation_url).json()
+
+        # kyc, institutional, statistics are not capable to call
         action_list = [{
             "action": "-".join([z.replace(":", "") for z in [y for y in x.split("/")]])[1:],
             "path": "/".join([z if ":" not in z else "{}" for z in [y for y in x.split("/")]]),
@@ -30,8 +32,22 @@ class CelsiusNetworkAPI:
                       if ":" in z][0] if [z.replace(':', '') for z in [y for y in x.split("/")] if ":" in z] else None,
             "param_description": [z.replace(':', '') for z in [y for y in x.split("/")] if ":" in z][0]
             if [z.replace(':', '') for z in [y for y in x.split("/")] if ":" in z] else "No Parameters needed",
-        } for x in response['paths'].keys() if any(s not in x for s in ("kyc", "institutional", "util-statistics"))]
-        # kyc, institutional, statistics are not capable to call
+        } for x in response['paths'].keys() if not any(s in x for s in ("kyc", "institutional", "util-statistics"))]
+
+        # These two action are not listed in openAPI but Postman...
+        action_list.append({
+            "action": "wallet-transaction",
+            "path": '/wallet/transactions?page=1&per_page=1000',
+            "param": None,
+            "param_description": "No Parameters needed"
+        })
+        action_list.append({
+            "action": "wallet-coin-transaction",
+            "path": '/wallet/{}/transactions?page=1&per_page=1000',
+            "param": 'coin',
+            "param_description": 'coin'
+        })
+
         return action_list
 
     def show_wallet_action(self):
@@ -66,31 +82,36 @@ class CelsiusNetworkAPI:
         return df.to_dict("records")
 
 
-class CoinGecko:
+def get_coin_list(desired_coin: list) -> pd.DataFrame:
+    url = r'https://api.coingecko.com/api/v3/coins/list'
+    df = pd.DataFrame(requests.get(url).json())
 
-    def get_coin_list(desired_coin: list) -> pd.DataFrame:
-        url = r'https://api.coingecko.com/api/v3/coins/list'
-        df = pd.DataFrame(requests.get(url).json())
+    return df.query(f"symbol in {str(desired_coin)}")
 
-        return df.query(f"symbol in {str(desired_coin)}")
 
-    def get_ohlc(coin: str, currency: str, day_range: int) -> pd.DataFrame:
-        url = f'https://api.coingecko.com/api/v3/coins/{coin}/ohlc?vs_currency={currency}&days={day_range}'
-        response = requests.get(url)
-        df = pd.DataFrame(response, columns=['time', 'open', 'high', 'low', 'close'])
-        df['date'] = df['time'].apply(lambda x: datetime.fromtimestamp(x / 1e3))
-        df = df.drop(columns=['time'])[['date', 'open', 'high', 'low', 'close']]
+def get_ohlc(coin: str, currency: str, day_range: int) -> pd.DataFrame:
+    url = f'https://api.coingecko.com/api/v3/coins/{coin}/ohlc?vs_currency={currency}&days={day_range}'
+    response = requests.get(url)
+    df = pd.DataFrame(response, columns=['time', 'open', 'high', 'low', 'close'])
+    df['date'] = df['time'].apply(lambda x: datetime.fromtimestamp(x / 1e3))
+    df = df.drop(columns=['time'])[['date', 'open', 'high', 'low', 'close']]
 
-        return df
+    return df
 
 
 def main():
     cel_credentials_path = [os.path.join(os.getcwd(), x) for x in os.listdir(os.getcwd()) if "credentials" in x][0]
     cel_credentials = json.load(open(cel_credentials_path))
     cel = CelsiusNetworkAPI(partner_token=cel_credentials['partner_token'], user_token=cel_credentials['user_token'])
-    # result1 = cel.get(action='wallet-coin-balance', coin="CEL")
-    # result2 = cel.get('wallet-interest')
-    result3 = cel.get_historical_interest_rate(['BTC', 'ETH', 'CEL'], "20200101")
+
+    # use case
+    # get balance in kind for balance > 0
+    balance = []
+    for key in {k: v for k, v in cel.get('wallet-balance')['balance'].items() if float(v) != float(0)}.keys():
+        data = cel.get('wallet-coin-balance', coin=key)
+        data.update({"coin": key})
+        balance.append(data)
+
     # df_balance_summary = pd.DataFrame(
     #     cel.get("balance_summary")['balance'].items(),
     #     columns=['coin', 'balance_in_kind']
