@@ -11,75 +11,59 @@ pd.set_option('display.max_columns', 15)
 class CelsiusNetworkAPI:
     __base_url = "https://wallet-api.celsius.network"
     __celcian_stat_url = "https://raw.githubusercontent.com/Celsians/Google-Sheets/master/data.json"
+    __openapi_documentation_url = r'https://wallet-api.staging.celsius.network/api-doc'
 
     def __init__(self, partner_token, user_token):
-        self.partner_token = partner_token
-        self.user_token = user_token
         self.headers = {
-            "X-Cel-Api-Key": self.user_token,
-            "X-Cel-Partner-Token": self.partner_token
+            "X-Cel-Api-Key": user_token,
+            "X-Cel-Partner-Token": partner_token
         }
-        self.__actions = {
-            "balance_summary": {
-                "description": "Check Wallet Balance Summary",
-                "param": "No parameters needed",
-                "url": "/wallet/balance"
-            },
-            "balance_summary_by_kind": {
-                "description": "Check Wallet Balance Summary by coin",
-                "param": "coin short form (e.g. BTC, ETH)",
-                "url": "/wallet/{}/balance"
-            },
-            "transaction_summary": {
-                "description": "Check Transaction Summary",
-                "param": "page, per_page",
-                "url": "/wallet/transactions?page={}&per_page={}"
-            },
-            "transaction_summary_coin": {
-                "description": "Check Transaction Summary by coin",
-                "param": "coin, page",
-                "url": "/wallet/transactions"
-            },
-            "interest_earned_summary": {
-                "description": "Check Interest Earned",
-                "param": "No parameters needed",
-                "url": "/wallet/interest"
-            },
-            "wallet_status": {
-                "description": "Check Wallet Status",
-                "url": "/util/statistics?timestamp="
-            },
-            "weekly_interest_rate": {
-                "description": "Check This week's Interst Rate",
-                "url": "/util/interest/rates"
-            },
-        }
-        self.documentation_url = r'https://wallet-api.staging.celsius.network/api-doc'
+        self.actions = self.__get_actions()
+        self.celsian_stat = requests.request("GET", self.__celcian_stat_url).json()
 
-    def __get_path(self):
-        response = requests.get(self.documentation_url).json()
-        paths = response['paths'].keys()
-        return paths
+    def __get_actions(self) -> list:
+        response = requests.get(self.__openapi_documentation_url).json()
+        action_list = [{
+            "action": "-".join([z.replace(":", "") for z in [y for y in x.split("/")]])[1:],
+            "path": "/".join([z if ":" not in z else "{}" for z in [y for y in x.split("/")]]),
+            "param": [z.replace(':', '') for z in [y for y in x.split("/")]
+                      if ":" in z][0] if [z.replace(':', '') for z in [y for y in x.split("/")] if ":" in z] else None,
+            "param_description": [z.replace(':', '') for z in [y for y in x.split("/")] if ":" in z][0]
+            if [z.replace(':', '') for z in [y for y in x.split("/")] if ":" in z] else "No Parameters needed",
+        } for x in response['paths'].keys() if any(s not in x for s in ("kyc", "institutional", "util-statistics"))]
+        # kyc, institutional, statistics are not capable to call
+        return action_list
 
     def show_wallet_action(self):
-        print("Action -> Command")
-        for key, val in self.__actions.items():
-            print(val['description'], " -> ", key)
+        print("Action -> Required Parameters")
+        for item in self.actions:
+            print(item['action'], " -> ", item['param_description'])
 
-    def get(self, command: str, **kwargs):
-        if command not in self.__actions.keys():
-            return "Error please input valid command"
-        else:
-            return requests.get(self.__base_url+self.__actions[command]['url'], headers=self.headers).json()
+    def get(self, action: str, **kwargs) -> dict:
+        if action not in [item['action'] for item in self.actions]:
+            return {"Error": "Please input correct action"}
+        for item in self.actions:
+            if item['action'] == action:
+                if not item['param']:
+                    path = item['path']
+                else:
+                    if item['param'] in kwargs.keys():
+                        path = item['path'].format(list(kwargs.values())[0])
+                    else:
+                        return {"Error": "Please input valid param"}
+                return requests.get(self.__base_url + path, headers=self.headers).json()
 
-    def get_historical_interest_rate(self, coin_list: list, start_date: str) -> pd.DataFrame:
-        response = requests.request("GET", self.__celcian_stat_url)
-        df = pd.DataFrame(response.json())
-        df = df[["Date"] + coin_list][1:]
+    def show_historical_interest_rate_available_coin(self) -> list:
+        return list(self.celsian_stat[0].keys())[2:len(list(self.celsian_stat[0].keys()))-7]
+
+    def get_historical_interest_rate(self, coin_list: list, start_date: str) -> dict:
+        df = pd.DataFrame(self.celsian_stat[1:])
+        df = df[["Date"] + coin_list]
         df['date_obj'] = pd.to_datetime(df['Date'], format='%d.%m.%Y')
+        df['date'] = df.date_obj.dt.date
         df = df.query(f'date_obj > "{start_date}"').drop(columns=['Date']).reset_index(drop=True)
-        df = df[['date_obj']+[x for x in df.columns if x != "date_obj"]]
-        return df
+        df = df[['date']+[x for x in df.columns if x != "date_obj" and x != 'Date']]
+        return df.to_dict("records")
 
 
 class CoinGecko:
@@ -104,10 +88,13 @@ def main():
     cel_credentials_path = [os.path.join(os.getcwd(), x) for x in os.listdir(os.getcwd()) if "credentials" in x][0]
     cel_credentials = json.load(open(cel_credentials_path))
     cel = CelsiusNetworkAPI(partner_token=cel_credentials['partner_token'], user_token=cel_credentials['user_token'])
-    df_balance_summary = pd.DataFrame(
-        cel.get("balance_summary")['balance'].items(),
-        columns=['coin', 'balance_in_kind']
-    ).astype({"balance_in_kind": "float"}).query("balance_in_kind != 0")
+    # result1 = cel.get(action='wallet-coin-balance', coin="CEL")
+    # result2 = cel.get('wallet-interest')
+    result3 = cel.get_historical_interest_rate(['BTC', 'ETH', 'CEL'], "20200101")
+    # df_balance_summary = pd.DataFrame(
+    #     cel.get("balance_summary")['balance'].items(),
+    #     columns=['coin', 'balance_in_kind']
+    # ).astype({"balance_in_kind": "float"}).query("balance_in_kind != 0")
 
 
 if __name__ == '__main__':
