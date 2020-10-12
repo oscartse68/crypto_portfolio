@@ -74,8 +74,7 @@ class CelsianStatistics:
 
     def get_historical_rate(self, coin_list: list, start_date: str) -> dict:
         df = pd.DataFrame(self.celsian_stat[1:])
-        coin_list = [{coin: True} if coin in df.columns else {coin: False} for coin in coin_list]
-        df = df[["Date"] + [list(i.keys())[0] for i in coin_list if list(i.values())[0] is True]]
+        df = df[["Date"] + coin_list]
         df['date_obj'] = pd.to_datetime(df['Date'], format='%d.%m.%Y')
         df['date'] = df.date_obj.dt.date
         df = df.query(f'date_obj > "{start_date}"').drop(columns=['Date']).reset_index(drop=True)
@@ -84,15 +83,13 @@ class CelsianStatistics:
 
 
 class CoinGecko:
+    __coin_list = r'https://api.coingecko.com/api/v3/coins/list'
 
-    def __init__(self, coins_in_cel_wallet):
-        self.coin_list = self.get_coin_list(coins_in_cel_wallet)
+    def __init__(self, cel_coin_list):
+        coin_list = self.get_coin_list(cel_coin_list)
 
-    # default fetch in coins that you have in your celsius wallet
     def get_coin_list(self, desired_coin: list) -> pd.DataFrame:
-        url = r'https://api.coingecko.com/api/v3/coins/list'
-        df = pd.DataFrame(requests.get(url).json())
-        return df.query(f"symbol in {str(desired_coin)}")
+        return pd.DataFrame(requests.get(self.__coin_list).json()).query(f"symbol in {str(desired_coin)}")
 
     def get_ohlc(self, coin: str, currency: str, day_range: int) -> pd.DataFrame:
         url = f'https://api.coingecko.com/api/v3/coins/{coin}/ohlc?vs_currency={currency}&days={day_range}'
@@ -108,7 +105,7 @@ def main():
     cel_credentials = json.load(open(cel_credentials_path))
     cel = CelsiusNetworkAPI(partner_token=cel_credentials['partner_token'], user_token=cel_credentials['user_token'])
 
-    # Use Case 1
+    # use case
     # get balance in kind for balance > 0
     balance = []
     for key in {k: v for k, v in cel.get('wallet-balance')['balance'].items() if float(v) != float(0)}.keys():
@@ -116,11 +113,6 @@ def main():
         data.update({"coin": key})
         balance.append(data)
     print(balance)
-
-    # Use Case 2
-    # retrieve previous interest rates
-    celsians_stat = CelsianStatistics()
-    df_prev_ir = pd.DataFrame(celsians_stat.get_historical_rate([i['coin'].upper() for i in balance], start_date='20200101'))
 
     # df_balance_summary = pd.DataFrame(
     #     cel.get("balance_summary")['balance'].items(),
