@@ -114,10 +114,10 @@ def main():
         balance.append(data)
     print(balance)
 
-    # df_balance_summary = pd.DataFrame(
-    #     cel.get("balance_summary")['balance'].items(),
-    #     columns=['coin', 'balance_in_kind']
-    # ).astype({"balance_in_kind": "float"}).query("balance_in_kind != 0")
+    df_balance_summary = pd.DataFrame(
+        cel.get("balance_summary")['balance'].items(),
+        columns=['coin', 'balance_in_kind']
+    ).astype({"balance_in_kind": "float"}).query("balance_in_kind != 0")
 
 
 if __name__ == '__main__':
