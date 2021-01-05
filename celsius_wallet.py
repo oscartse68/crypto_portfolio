@@ -29,7 +29,19 @@ class CelsiusNetworkAPI:
             if [z.replace(':', '') for z in [y for y in x.split("/")] if ":" in z] else "No Parameters needed",
         } for x in response['paths'].keys() if not any(s in x for s in ("kyc", "institutional", "util-statistics"))]
 
-        # These two action are not listed in openAPI but Postman...
+        for path in response['paths'].keys():
+            if not any(keyword in path for keyword in ("kyc", "institutional", "util-statistics")):
+
+                splitted_path = [y for y in path.split("/")]
+                action_item = {
+                    "action": "-".join([word.replace(":", "") for word in splitted_path])[1:],
+                    "path": "/".join([word if ":" not in word else f"{{{word.replace(':', '')}}}" for word in splitted_path]),
+                    "param": [word.replace(':', '') for word in splitted_path if ":" in word] if [word.replace(':', '') for word in splitted_path if ":" in word] else None,
+                    "param_description": [z.replace(':', '') for z in [y for y in path.split("/")] if ":" in z][0]
+                    if [z.replace(':', '') for z in splitted_path if ":" in z] else "No Parameters needed",
+                }
+
+        # These two actions are not listed in openAPI but Postman... (Hardcoded part)
         action_list.append({
             "action": "wallet-transaction",
             "path": '/wallet/transactions?page={page}&per_page={per_page}',
@@ -38,12 +50,23 @@ class CelsiusNetworkAPI:
         })
         action_list.append({
             "action": "wallet-coin-transaction",
-            "path": '/wallet/{coin}/transactions?page={page}&per_page={per_page}',
+            "path": '/util/interest/rates',
             "param": ['coin', 'page', 'per_page'],
             "param_description": 'coin, page, per_page'
         })
 
+        # Adding in Calculating interest rate in different CEL tiers
+        action_list.append({
+            "action": "util-interest-rate-with-cel-tier",
+            "path": '/wallet/{coin}/transactions?page={page}&per_page={per_page}',
+            "param": None,
+            "param_description": 'No Parameters needed'
+        })
+
         return action_list
+
+    def help(self):
+        print("Call show_wallet_action and follow the command to read information from your celsius wallet!")
 
     def show_wallet_action(self):
         print(pd.DataFrame(pd.DataFrame(self.actions).drop(columns=['path', 'param'])))
@@ -118,6 +141,8 @@ def main():
         cel.get("balance_summary")['balance'].items(),
         columns=['coin', 'balance_in_kind']
     ).astype({"balance_in_kind": "float"}).query("balance_in_kind != 0")
+
+    print(df_balance_summary)
 
 
 if __name__ == '__main__':
